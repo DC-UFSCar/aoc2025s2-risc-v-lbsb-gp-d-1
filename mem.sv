@@ -13,6 +13,11 @@ module mem (
   assign rd = RAM[a[31:2]]; // word aligned
 
   always_ff @(posedge clk)
-    if (we)
-      RAM[a[31:2]] <= wd;
+    if (we) begin
+      // Write with byte mask for LB/SB support
+      if (wm[0]) RAM[a[31:2]][7:0]   <= wd[7:0];
+      if (wm[1]) RAM[a[31:2]][15:8]  <= wd[15:8];
+      if (wm[2]) RAM[a[31:2]][23:16] <= wd[23:16];
+      if (wm[3]) RAM[a[31:2]][31:24] <= wd[31:24];
+    end
 endmodule

@@ -10,12 +10,12 @@ module riscvmulti (
 
     logic [31:0] instr, PC = 0;
 
-    wire writeBackEn = // Quando se escreve no banco de registradores?
-    wire [31:0] writeBackData = // O que se escreve no banco de registradores?
-    wire [31:0] LoadStoreAddress = // Como se calcula o endereço de memória para loads e stores?
-    assign Address = // Qual o endereço de memória a ser acessado? Alternar entre .text e .data dependendo do estado
-    assign MemWrite = // Em que estado se escreve na memória?
-    assign WriteData = // O que se escreve na memória?
+    wire writeBackEn =  (state == WAIT_DATA && isLoad) || (state == EXECUTE && (isALUreg || isALUimm || isLUI || isAUIPC || isJAL || isJALR));// Quando se escreve no banco de registradores?
+    wire [31:0] writeBackData = (isJAL || isJALR) ? PCplus4 : (isLUI) ? Uimm : (isAUIPC) ? (PC + Uimm) : (isLoad) ? LoadData  :  ALUResult; // O que se escreve no banco de registradores?
+    wire [31:0] LoadStoreAddress =  rs1 + (isLoad ? Iimm : Simm); // Como se calcula o endereço de memória para loads e stores
+    assign Address =  (state == FETCH_INSTR || state == WAIT_INSTR) ? PC  : LoadStoreAddress; // Qual o endereço de memória a ser acessado? Alternar entre .text e .data dependendo do estado
+    assign MemWrite = (state == STORE); // Em que estado se escreve na memória?
+    assign WriteData = (funct3 == 3'b000) ? {4{rs2[7:0]}} : (funct3 == 3'b001) ? {2{rs2[15:0]}} : rs2; // O que se escreve na memória?
 
     // The 10 RISC-V instructions
     wire isALUreg  =  (instr[6:0] == 7'b0110011); // rd <- rs1 OP rs2   
@@ -123,6 +123,18 @@ module riscvmulti (
     wire [31:0] PCNext = ((isBranch && takeBranch) || isJAL) ? PCTarget :
                                                       isJALR ? {aluPlus[31:1],1'b0} :
                                                                PCplus4;
+
+
+// LB/SB/LH/SH
+wire [31:0] LoadData;
+wire [7:0] loaded_byte;
+wire [15:0] loaded_half;
+
+assign loaded_byte = (LoadStoreAddress[1:0] == 2'b00) ? ReadData[7:0] : (LoadStoreAddress[1:0] == 2'b01) ? ReadData[15:8] : (LoadStoreAddress[1:0] == 2'b10) ? ReadData[23:16] : ReadData[31:24];
+assign loaded_half = (LoadStoreAddress[1] == 1'b0) ? ReadData[15:0] : ReadData[31:16];
+assign LoadData = (funct3 == 3'b000) ? {{24{loaded_byte[7]}}, loaded_byte} : (funct3 == 3'b001) ? {{16{loaded_half[15]}}, loaded_half} : (funct3 == 3'b010) ? ReadData : (funct3 == 3'b100) ? {24'b0, loaded_byte} : (funct3 == 3'b101) ? {16'b0, loaded_half} : ReadData;
+
+assign WriteMask = (isStore) ? ((funct3 == 3'b000) ? (4'b0001 << LoadStoreAddress[1:0]) : (funct3 == 3'b001) ? (4'b0011 << {LoadStoreAddress[1], 1'b0}) : 4'b1111) : 4'b0000;
 
 
     // The state machine
